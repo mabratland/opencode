@@ -1,4 +1,5 @@
 import { Plugin } from "@opencode/plugin";
+import { resolveExternalServers, validateExternalServers } from "./external-mcp.js";
 
 export const PLUGIN_ID = "homeassistant.mcp";
 export const MCP_SERVER_NAME = "homeassistant";
@@ -86,7 +87,7 @@ function requireTimeouts(value) {
 
 export function parseOptions(value) {
   const input = requireObject(value);
-  const allowed = new Set(["endpoint", "nativeEnabled", "nativeEndpoint", "timeouts"]);
+  const allowed = new Set(["endpoint", "nativeEnabled", "nativeEndpoint", "timeouts", "externalServers"]);
   const unknown = Object.keys(input).filter((key) => !allowed.has(key));
   if (unknown.length > 0) {
     throw new TypeError(`Unknown Home Assistant plugin option: ${unknown.join(", ")}`);
@@ -105,6 +106,7 @@ export function parseOptions(value) {
       "nativeEndpoint",
     ),
     timeouts: requireTimeouts(input.timeouts),
+    ...(input.externalServers === undefined ? {} : { externalServers: validateExternalServers(input.externalServers) }),
   };
 }
 
@@ -183,7 +185,7 @@ async function disposeRegistrations(registrations) {
   if (errors.length > 1) throw new AggregateError(errors, "Failed to dispose Home Assistant plugin registrations");
 }
 
-export function createSetup({ readSecret = readCallerSecret } = {}) {
+export function createSetup({ readSecret = readCallerSecret, resolveExternal = resolveExternalServers } = {}) {
   return async function setup(ctx) {
     const options = parseOptions(ctx.options);
     const callerSecret = requireCallerSecret(await readSecret());
@@ -191,9 +193,11 @@ export function createSetup({ readSecret = readCallerSecret } = {}) {
     const nativeServer = options.nativeEnabled
       ? createServerConfig(options, callerSecret, options.nativeEndpoint)
       : null;
+    const externalServers = await resolveExternal(options.externalServers ?? {});
     const registrations = [await ctx.mcp.transform((draft) => {
       draft.set(MCP_SERVER_NAME, server);
       if (nativeServer) draft.set(NATIVE_MCP_SERVER_NAME, nativeServer);
+      for (const [name, externalServer] of Object.entries(externalServers)) draft.set(name, externalServer);
     })];
 
     return async () => {

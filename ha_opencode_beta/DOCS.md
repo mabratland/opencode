@@ -604,6 +604,76 @@ a warning; cloud credential chains and general environment parity remain under
 development. Ordinary provider keys are not isolated from backend subprocesses.
 Do not paste keys into chat. Native `/connect` account setup remains available.
 
+### External MCP servers
+
+Use **External MCP configuration** for additional MCP servers. This is separate
+from `opencode_config` so managed plugins and permissions remain locked. The
+option accepts a JSON object with `servers` and optional ordered `permissions`.
+External tools default to `ask`; later permission entries override that default.
+
+During a 2.x upgrade, compatible legacy `mcp` and `permission` fields are read
+from `opencode_config` automatically. Move credential values to the MCP secrets
+directory and replace local `sh -c` wrappers with direct executable commands
+before updating. After activation, move the definitions to this dedicated option
+at your convenience; configuring both locations at once is rejected.
+
+Remote headers other than `Accept`, `Content-Type`, `Host` and `User-Agent` must
+use a `secret_file` descriptor with an optional non-secret `prefix`. Local values
+under `environment` must reference a single-line file under
+`/data/.config/opencode/mcp-secrets`. That directory must be root-owned `0700`;
+each secret must be a root-owned, singly linked `0600` regular file. Local MCP
+executables must be root-owned, singly linked `0755` regular files directly under
+the root-owned `0755` `/data/.config/opencode/bin` directory. Each enabled local
+server runs under its own unprivileged numeric identity with only a minimal
+baseline and its explicitly declared environment. Put secret-file references in
+`environment` and intentionally non-secret values in `literal_environment`.
+Direct shell commands, symlinks and inherited provider keys are rejected or
+removed; a secured executable may itself be an interpreter script.
+
+```json
+{
+  "servers": {
+    "infrastructure": {
+      "type": "remote",
+      "url": "https://mcp.example.test/mcp",
+      "headers": {
+        "Authorization": {
+          "secret_file": "infrastructure-token",
+          "prefix": "Bearer "
+        }
+      }
+    },
+    "metrics": {
+      "type": "local",
+      "command": [
+        "/data/.config/opencode/bin/metrics-mcp",
+        "--read-only"
+      ],
+      "environment": {
+        "METRICS_API_TOKEN": "{file:/data/.config/opencode/mcp-secrets/metrics-token}"
+      },
+      "literal_environment": {
+        "METRICS_URL": "https://metrics.example.test"
+      }
+    }
+  },
+  "permissions": {
+    "infrastructure_*": "ask",
+    "infrastructure_get_*": "allow",
+    "infrastructure_list_*": "allow",
+    "metrics_*": "allow"
+  }
+}
+```
+
+Server names may contain letters, digits, underscores and hyphens. `homeassistant`
+and `homeassistant_native` are reserved. Remote URLs cannot contain credentials.
+HTTPS is required unless `"allow_insecure": true` explicitly accepts plaintext
+HTTP on a trusted private path; compatible legacy HTTP entries receive that flag
+during migration. At most 16 servers and 512 permission entries are
+accepted. Disable **Home Assistant MCP integration** only after removing every
+external server; the same credential-isolated plugin owns both registrations.
+
 ### Web search selection
 
 Set a search provider in **Custom OpenCode configuration** and configure its key
