@@ -648,11 +648,15 @@ from `opencode_config` so managed plugins and permissions remain locked. The
 option accepts a JSON object with `servers` and optional ordered `permissions`.
 External tools default to `ask`; later permission entries override that default.
 
-During a 2.x upgrade, compatible legacy `mcp` and `permission` fields are read
-from `opencode_config` automatically. Move credential values to the MCP secrets
-directory and replace local `sh -c` wrappers with direct executable commands
-before updating. After activation, move the definitions to this dedicated option
-at your convenience; configuring both locations at once is rejected.
+During a 2.x upgrade, compatible legacy `mcp` and `permission` fields in the
+add-on's `opencode_config` option are read automatically. Project-level files
+such as `/homeassistant/opencode.json`, old sessions and provider authentication
+are not imported. To migrate those servers, copy each supported definition into
+**External MCP configuration**, move credential values to the MCP secrets
+directory, and replace local `sh -c` wrappers with direct executable commands.
+Reconnect provider accounts separately. After activation, move any automatically
+imported definitions to this dedicated option at your convenience; configuring
+both locations at once is rejected.
 
 Remote headers other than `Accept`, `Content-Type`, `Host` and `User-Agent` must
 use a `secret_file` descriptor with an optional non-secret `prefix`. Local values
@@ -665,7 +669,11 @@ server runs under its own unprivileged numeric identity with only a minimal
 baseline and its explicitly declared environment. Put secret-file references in
 `environment` and intentionally non-secret values in `literal_environment`.
 Direct shell commands, symlinks and inherited provider keys are rejected or
-removed; a secured executable may itself be an interpreter script.
+removed; a secured executable may itself be an interpreter script. The numeric
+identity and scrubbed environment are credential boundaries, not a filesystem or
+network sandbox. A local server can still read files available to its identity,
+including world-readable Home Assistant files, and can access the network. Only
+install trusted local MCP executables.
 
 ```json
 {
@@ -709,7 +717,10 @@ HTTPS is required unless `"allow_insecure": true` explicitly accepts plaintext
 HTTP on a trusted private path; compatible legacy HTTP entries receive that flag
 during migration. At most 16 servers and 512 permission entries are
 accepted. Disable **Home Assistant MCP integration** only after removing every
-external server; the same credential-isolated plugin owns both registrations.
+external server; the same credential-isolated plugin owns both registrations. A
+runtime error in an external definition, secret or executable is reported in the
+log and skips the external registrations without removing the bundled Home
+Assistant MCP servers.
 
 ### Web search selection
 

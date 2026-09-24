@@ -187,18 +187,29 @@ async function disposeRegistrations(registrations) {
 
 export function createSetup({ readSecret = readCallerSecret, resolveExternal = resolveExternalServers } = {}) {
   return async function setup(ctx) {
-    const options = parseOptions(ctx.options);
+    const input = requireObject(ctx.options);
+    const { externalServers, ...managedOptions } = input;
+    const options = parseOptions(managedOptions);
     const callerSecret = requireCallerSecret(await readSecret());
     const server = createServerConfig(options, callerSecret);
     const nativeServer = options.nativeEnabled
       ? createServerConfig(options, callerSecret, options.nativeEndpoint)
       : null;
-    const externalServers = await resolveExternal(options.externalServers ?? {});
     const registrations = [await ctx.mcp.transform((draft) => {
       draft.set(MCP_SERVER_NAME, server);
       if (nativeServer) draft.set(NATIVE_MCP_SERVER_NAME, nativeServer);
-      for (const [name, externalServer] of Object.entries(externalServers)) draft.set(name, externalServer);
     })];
+
+    if (externalServers !== undefined) {
+      try {
+        const resolved = await resolveExternal(externalServers);
+        registrations.push(await ctx.mcp.transform((draft) => {
+          for (const [name, externalServer] of Object.entries(resolved)) draft.set(name, externalServer);
+        }));
+      } catch {
+        console.error("External MCP servers were not registered; check the add-on configuration, secret files, and local executables");
+      }
+    }
 
     return async () => {
       await disposeRegistrations(registrations);

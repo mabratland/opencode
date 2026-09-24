@@ -163,7 +163,8 @@ describe("bounded external MCP configuration", () => {
 
   it("registers external servers beside the managed Home Assistant MCP", async () => {
     const prepared = prepareExternalMcpConfig({ external_mcp_config: JSON.stringify(fixture()) });
-    let registered;
+    const registered = new Map();
+    let transforms = 0;
     const setup = createSetup({
       readSecret: async () => "a".repeat(64),
       resolveExternal: async () => ({ metrics: { type: "local", command: ["/data/.config/opencode/bin/metrics-mcp"] } }),
@@ -175,14 +176,48 @@ describe("bounded external MCP configuration", () => {
       },
       mcp: {
         transform: async (callback) => {
-          registered = new Map();
+          transforms++;
           callback(registered);
           return { dispose: async () => {} };
         },
       },
     });
+    assert.equal(transforms, 2);
     assert.deepEqual([...registered.keys()], ["homeassistant", "metrics"]);
     await dispose();
+  });
+
+  it("keeps built-in Home Assistant MCP servers when external resolution fails", async () => {
+    const registered = new Map();
+    const messages = [];
+    const originalError = console.error;
+    console.error = (...items) => messages.push(items.join(" "));
+    try {
+      const setup = createSetup({
+        readSecret: async () => "a".repeat(64),
+        resolveExternal: async () => { throw new Error("sensitive resolver detail"); },
+      });
+      const dispose = await setup({
+        options: {
+          endpoint: "http://127.0.0.1:8765/mcp",
+          nativeEnabled: true,
+          externalServers: fixture().servers,
+        },
+        mcp: {
+          transform: async (callback) => {
+            callback(registered);
+            return { dispose: async () => {} };
+          },
+        },
+      });
+      assert.deepEqual([...registered.keys()], ["homeassistant", "homeassistant_native"]);
+      assert.equal(messages.length, 1);
+      assert.match(messages[0], /External MCP servers were not registered/);
+      assert.doesNotMatch(messages[0], /sensitive resolver detail/);
+      await dispose();
+    } finally {
+      console.error = originalError;
+    }
   });
 
   it("imports compatible V1 mcp and permission fields on first V2 startup", () => {
