@@ -115,7 +115,9 @@ describe("bounded external MCP configuration", () => {
     assert.ok(resolved.metrics);
   });
 
-  it("opens secret files relative to a non-symlinked directory descriptor", async () => {
+  it("opens secret files relative to a non-symlinked directory descriptor", {
+    skip: process.getuid?.() !== 0 ? "requires root-owned secret fixtures" : false,
+  }, async () => {
     const root = await mkdtemp(join(tmpdir(), "external-mcp-secrets-"));
     const parentLink = `${root}-link`;
     try {
